@@ -22,3 +22,4 @@ export * from "./listRemoteExitNodes";
 export * from "./pickRemoteExitNodeDefaults";
 export * from "./quickStartRemoteExitNode";
 export * from "./offlineChecker";
+export * from "./exitNodeReconnectScheduler";
