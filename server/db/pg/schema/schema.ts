@@ -160,7 +160,9 @@ export const resources = pgTable("resources", {
     postAuthPath: text("postAuthPath"),
     health: varchar("health").default("unknown"), // "healthy", "unhealthy", "unknown"
     wildcard: boolean("wildcard").notNull().default(false)
-});
+}, (table) => [
+    index("idx_resources_fullDomain").on(table.fullDomain),
+]);
 
 export const targets = pgTable("targets", {
     targetId: serial("targetId").primaryKey(),
@@ -184,7 +186,9 @@ export const targets = pgTable("targets", {
     rewritePath: text("rewritePath"), // if set, rewrites the path to this value before sending to the target
     rewritePathType: text("rewritePathType"), // exact, prefix, regex, stripPrefix
     priority: integer("priority").notNull().default(100)
-});
+}, (table) => [
+    index("idx_targets_resourceId").on(table.resourceId),
+]);
 
 export const targetHealthCheck = pgTable("targetHealthCheck", {
     targetHealthCheckId: serial("targetHealthCheckId").primaryKey(),
@@ -378,7 +382,9 @@ export const sessions = pgTable("session", {
     expiresAt: bigint("expiresAt", { mode: "number" }).notNull(),
     issuedAt: bigint("issuedAt", { mode: "number" }),
     deviceAuthUsed: boolean("deviceAuthUsed").notNull().default(false)
-});
+}, (table) => [
+    index("idx_session_userId").on(table.userId),
+]);
 
 export const newtSessions = pgTable("newtSession", {
     sessionId: varchar("id").primaryKey(),
@@ -400,7 +406,9 @@ export const userOrgs = pgTable("userOrgs", {
     isOwner: boolean("isOwner").notNull().default(false),
     autoProvisioned: boolean("autoProvisioned").default(false),
     pamUsername: varchar("pamUsername") // cleaned username for ssh and such
-});
+}, (table) => [
+    index("idx_userOrgs_userId").on(table.userId),
+]);
 
 export const emailVerificationCodes = pgTable("emailVerificationCodes", {
     codeId: serial("id").primaryKey(),
@@ -551,7 +559,9 @@ export const resourcePincode = pgTable("resourcePincode", {
         .references(() => resources.resourceId, { onDelete: "cascade" }),
     pincodeHash: varchar("pincodeHash").notNull(),
     digitLength: integer("digitLength").notNull()
-});
+}, (table) => [
+    index("idx_resourcePincode_resourceId").on(table.resourceId),
+]);
 
 export const resourcePassword = pgTable("resourcePassword", {
     passwordId: serial("passwordId").primaryKey(),
@@ -559,7 +569,9 @@ export const resourcePassword = pgTable("resourcePassword", {
         .notNull()
         .references(() => resources.resourceId, { onDelete: "cascade" }),
     passwordHash: varchar("passwordHash").notNull()
-});
+}, (table) => [
+    index("idx_resourcePassword_resourceId").on(table.resourceId),
+]);
 
 export const resourceHeaderAuth = pgTable("resourceHeaderAuth", {
     headerAuthId: serial("headerAuthId").primaryKey(),
@@ -567,7 +579,9 @@ export const resourceHeaderAuth = pgTable("resourceHeaderAuth", {
         .notNull()
         .references(() => resources.resourceId, { onDelete: "cascade" }),
     headerAuthHash: varchar("headerAuthHash").notNull()
-});
+}, (table) => [
+    index("idx_resourceHeaderAuth_resourceId").on(table.resourceId),
+]);
 
 export const resourceHeaderAuthExtendedCompatibility = pgTable(
     "resourceHeaderAuthExtendedCompatibility",
@@ -642,7 +656,10 @@ export const resourceSessions = pgTable("resourceSessions", {
         }
     ),
     issuedAt: bigint("issuedAt", { mode: "number" })
-});
+}, (table) => [
+    index("idx_resourceSessions_resourceId").on(table.resourceId),
+    index("idx_resourceSessions_userSessionId").on(table.userSessionId),
+]);
 
 export const resourceWhitelist = pgTable("resourceWhitelist", {
     whitelistId: serial("id").primaryKey(),
@@ -650,7 +667,9 @@ export const resourceWhitelist = pgTable("resourceWhitelist", {
     resourceId: integer("resourceId")
         .notNull()
         .references(() => resources.resourceId, { onDelete: "cascade" })
-});
+}, (table) => [
+    index("idx_resourceWhitelist_resourceId").on(table.resourceId),
+]);
 
 export const resourceOtp = pgTable("resourceOtp", {
     otpId: serial("otpId").primaryKey(),
@@ -677,7 +696,9 @@ export const resourceRules = pgTable("resourceRules", {
     action: varchar("action").notNull(), // ACCEPT, DROP, PASS
     match: varchar("match").notNull(), // CIDR, PATH, IP
     value: varchar("value").notNull()
-});
+}, (table) => [
+    index("idx_resourceRules_resourceId").on(table.resourceId),
+]);
 
 export const supporterKey = pgTable("supporterKey", {
     keyId: serial("keyId").primaryKey(),

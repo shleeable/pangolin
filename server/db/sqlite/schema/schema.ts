@@ -181,7 +181,9 @@ export const resources = sqliteTable("resources", {
     postAuthPath: text("postAuthPath"),
     health: text("health").default("unknown"), // "healthy", "unhealthy", "unknown"
     wildcard: integer("wildcard", { mode: "boolean" }).notNull().default(false)
-});
+}, (table) => [
+    index("idx_resources_fullDomain").on(table.fullDomain),
+]);
 
 export const targets = sqliteTable("targets", {
     targetId: integer("targetId").primaryKey({ autoIncrement: true }),
@@ -205,7 +207,9 @@ export const targets = sqliteTable("targets", {
     rewritePath: text("rewritePath"), // if set, rewrites the path to this value before sending to the target
     rewritePathType: text("rewritePathType"), // exact, prefix, regex, stripPrefix
     priority: integer("priority").notNull().default(100)
-});
+}, (table) => [
+    index("idx_targets_resourceId").on(table.resourceId),
+]);
 
 export const targetHealthCheck = sqliteTable("targetHealthCheck", {
     targetHealthCheckId: integer("targetHealthCheckId").primaryKey({
@@ -680,7 +684,9 @@ export const sessions = sqliteTable("session", {
     deviceAuthUsed: integer("deviceAuthUsed", { mode: "boolean" })
         .notNull()
         .default(false)
-});
+}, (table) => [
+    index("idx_session_userId").on(table.userId),
+]);
 
 export const newtSessions = sqliteTable("newtSession", {
     sessionId: text("id").primaryKey(),
@@ -712,7 +718,9 @@ export const userOrgs = sqliteTable("userOrgs", {
         mode: "boolean"
     }).default(false),
     pamUsername: text("pamUsername") // cleaned username for ssh and such
-});
+}, (table) => [
+    index("idx_userOrgs_userId").on(table.userId),
+]);
 
 export const emailVerificationCodes = sqliteTable("emailVerificationCodes", {
     codeId: integer("id").primaryKey({ autoIncrement: true }),
@@ -887,7 +895,9 @@ export const resourcePincode = sqliteTable("resourcePincode", {
         .references(() => resources.resourceId, { onDelete: "cascade" }),
     pincodeHash: text("pincodeHash").notNull(),
     digitLength: integer("digitLength").notNull()
-});
+}, (table) => [
+    index("idx_resourcePincode_resourceId").on(table.resourceId),
+]);
 
 export const resourcePassword = sqliteTable("resourcePassword", {
     passwordId: integer("passwordId").primaryKey({
@@ -897,7 +907,9 @@ export const resourcePassword = sqliteTable("resourcePassword", {
         .notNull()
         .references(() => resources.resourceId, { onDelete: "cascade" }),
     passwordHash: text("passwordHash").notNull()
-});
+}, (table) => [
+    index("idx_resourcePassword_resourceId").on(table.resourceId),
+]);
 
 export const resourceHeaderAuth = sqliteTable("resourceHeaderAuth", {
     headerAuthId: integer("headerAuthId").primaryKey({
@@ -907,7 +919,9 @@ export const resourceHeaderAuth = sqliteTable("resourceHeaderAuth", {
         .notNull()
         .references(() => resources.resourceId, { onDelete: "cascade" }),
     headerAuthHash: text("headerAuthHash").notNull()
-});
+}, (table) => [
+    index("idx_resourceHeaderAuth_resourceId").on(table.resourceId),
+]);
 
 export const resourceHeaderAuthExtendedCompatibility = sqliteTable(
     "resourceHeaderAuthExtendedCompatibility",
@@ -984,7 +998,10 @@ export const resourceSessions = sqliteTable("resourceSessions", {
         }
     ),
     issuedAt: integer("issuedAt")
-});
+}, (table) => [
+    index("idx_resourceSessions_resourceId").on(table.resourceId),
+    index("idx_resourceSessions_userSessionId").on(table.userSessionId),
+]);
 
 export const resourceWhitelist = sqliteTable("resourceWhitelist", {
     whitelistId: integer("id").primaryKey({ autoIncrement: true }),
@@ -992,7 +1009,9 @@ export const resourceWhitelist = sqliteTable("resourceWhitelist", {
     resourceId: integer("resourceId")
         .notNull()
         .references(() => resources.resourceId, { onDelete: "cascade" })
-});
+}, (table) => [
+    index("idx_resourceWhitelist_resourceId").on(table.resourceId),
+]);
 
 export const resourceOtp = sqliteTable("resourceOtp", {
     otpId: integer("otpId").primaryKey({
@@ -1021,7 +1040,9 @@ export const resourceRules = sqliteTable("resourceRules", {
     action: text("action").notNull(), // ACCEPT, DROP, PASS
     match: text("match").notNull(), // CIDR, PATH, IP
     value: text("value").notNull()
-});
+}, (table) => [
+    index("idx_resourceRules_resourceId").on(table.resourceId),
+]);
 
 export const supporterKey = sqliteTable("supporterKey", {
     keyId: integer("keyId").primaryKey({ autoIncrement: true }),
