@@ -4,21 +4,18 @@ http:
       plugin:
         badger:
           disableForwardAuth: true
-    redirect-to-https:
-      redirectScheme:
-        scheme: https
+    security-headers:
+      headers:
+        browserXssFilter: true
+        contentTypeNosniff: true
+        forceSTSHeader: true
+        stsIncludeSubdomains: true
+        stsPreload: true
+        stsSeconds: 31536000
+        customFrameOptionsValue: SAMEORIGIN
+        referrerPolicy: "strict-origin-when-cross-origin"
 
   routers:
-    # HTTP to HTTPS redirect router
-    main-app-router-redirect:
-      rule: "Host(`{{.DashboardDomain}}`)"
-      service: next-service
-      entryPoints:
-        - web
-      middlewares:
-        - redirect-to-https
-        - badger
-
     # Next.js router (handles everything except API and WebSocket paths)
     next-router:
       rule: "Host(`{{.DashboardDomain}}`) && !PathPrefix(`/api/v1`)"
@@ -27,6 +24,7 @@ http:
         - websecure
       middlewares:
         - badger
+        - security-headers
       tls:
         certResolver: letsencrypt
 
@@ -38,6 +36,7 @@ http:
         - websecure
       middlewares:
         - badger
+        - security-headers
       tls:
         certResolver: letsencrypt
 

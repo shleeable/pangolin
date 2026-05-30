@@ -55,7 +55,7 @@ import {
 } from "#private/lib/certificates";
 import { build } from "@server/build";
 
-const redirectHttpsMiddlewareName = "redirect-to-https";
+const securityHeadersMiddlewareName = "security-headers";
 const redirectToRootMiddlewareName = "redirect-to-root";
 const badgerMiddlewareName = "badger";
 
@@ -332,11 +332,6 @@ export async function getTraefikConfig(
     const config_output: any = {
         http: {
             middlewares: {
-                [redirectHttpsMiddlewareName]: {
-                    redirectScheme: {
-                        scheme: "https"
-                    }
-                },
                 [redirectToRootMiddlewareName]: {
                     redirectRegex: {
                         regex: "^(https?)://([^/]+)(/.*)?",
@@ -386,6 +381,7 @@ export async function getTraefikConfig(
 
             const routerMiddlewares = [
                 badgerMiddlewareName,
+                securityHeadersMiddlewareName,
                 ...additionalMiddlewares
             ];
 
@@ -487,17 +483,6 @@ export async function getTraefikConfig(
                 }
             }
 
-            if (resource.ssl) {
-                config_output.http.routers![routerName + "-redirect"] = {
-                    entryPoints: [
-                        config.getRawConfig().traefik.http_entrypoint
-                    ],
-                    middlewares: [redirectHttpsMiddlewareName],
-                    service: serviceName,
-                    rule: rule,
-                    priority: priority
-                };
-            }
 
             const availableServers = targets.filter((target) => {
                 if (!target.enabled) return false;
@@ -984,14 +969,6 @@ export async function getTraefikConfig(
                     }
                 };
 
-            // HTTP -> HTTPS redirect so the ACME challenge can be served
-            config_output.http.routers[`${siteResourceRouterName}-redirect`] = {
-                entryPoints: [config.getRawConfig().traefik.http_entrypoint],
-                middlewares: [redirectHttpsMiddlewareName],
-                service: siteResourceServiceName,
-                rule: `Host(\`${fullDomain}\`)`,
-                priority: 100
-            };
 
             // Determine TLS / cert-resolver configuration
             let tls: any = {};
@@ -1167,16 +1144,6 @@ export async function getTraefikConfig(
                     tls: tls
                 };
 
-                // we need to add a redirect from http to https too
-                config_output.http.routers![routerName + "-redirect"] = {
-                    entryPoints: [
-                        config.getRawConfig().traefik.http_entrypoint
-                    ],
-                    middlewares: [redirectHttpsMiddlewareName],
-                    service: "landing-service",
-                    rule: `Host(\`${fullDomain}\`)`,
-                    priority: 201
-                };
             }
         }
     }

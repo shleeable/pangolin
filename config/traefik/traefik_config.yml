@@ -1,5 +1,4 @@
 api:
-  insecure: true
   dashboard: true
 
 providers:
@@ -23,6 +22,9 @@ log:
   maxAge: 3
   compress: true
 
+accessLog:
+  format: "common"
+
 certificatesResolvers:
   letsencrypt:
     acme:
@@ -35,17 +37,31 @@ certificatesResolvers:
 entryPoints:
   web:
     address: ":80"
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+          permanent: true
   websecure:
     address: ":443"
     transport:
       respondingTimeouts:
         readTimeout: "30m"
+        writeTimeout: "30m"
+        idleTimeout: "30m"
     http:
       tls:
         certResolver: "letsencrypt"
+        options: default
       encodedCharacters:
         allowEncodedSlash: true
         allowEncodedQuestionMark: true
+
+tls:
+  options:
+    default:
+      minVersion: VersionTLS12
 
 serversTransport:
   insecureSkipVerify: true

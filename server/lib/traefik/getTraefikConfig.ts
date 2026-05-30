@@ -16,7 +16,7 @@ import { resources, sites, Target, targets } from "@server/db";
 import createPathRewriteMiddleware from "./middleware";
 import { sanitize, encodePath, validatePathRewriteConfig } from "./utils";
 
-const redirectHttpsMiddlewareName = "redirect-to-https";
+const securityHeadersMiddlewareName = "security-headers";
 const badgerMiddlewareName = "badger";
 
 // Define extended target type with site information
@@ -217,13 +217,7 @@ export async function getTraefikConfig(
 
     const config_output: any = {
         http: {
-            middlewares: {
-                [redirectHttpsMiddlewareName]: {
-                    redirectScheme: {
-                        scheme: "https"
-                    }
-                }
-            }
+            middlewares: {}
         }
     };
 
@@ -311,6 +305,7 @@ export async function getTraefikConfig(
 
             const routerMiddlewares = [
                 badgerMiddlewareName,
+                securityHeadersMiddlewareName,
                 ...additionalMiddlewares
             ];
 
@@ -457,17 +452,6 @@ export async function getTraefikConfig(
                 ...(resource.ssl ? { tls } : {})
             };
 
-            if (resource.ssl) {
-                config_output.http.routers![routerName + "-redirect"] = {
-                    entryPoints: [
-                        config.getRawConfig().traefik.http_entrypoint
-                    ],
-                    middlewares: [redirectHttpsMiddlewareName],
-                    service: serviceName,
-                    rule: rule,
-                    priority: priority
-                };
-            }
 
             config_output.http.services![serviceName] = {
                 loadBalancer: {
