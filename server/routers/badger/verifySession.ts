@@ -112,13 +112,12 @@ export async function verifyResourceSession(
             ? stripPortFromHost(requestIp, badgerVersion)
             : undefined;
 
-        logger.debug("Client IP:", { clientIp });
+        if (logger.isLevelEnabled("debug")) {
+            logger.debug("Client IP:", { clientIp });
+        }
 
-        const ipCC = clientIp
-            ? await getCountryCodeFromIp(clientIp)
-            : undefined;
-
-        const ipAsn = clientIp ? await getAsnFromIp(clientIp) : undefined;
+        let ipCC: string | undefined;
+        let ipAsn: number | undefined;
 
         let cleanHost = host;
         // if the host ends with :port, strip it
@@ -161,7 +160,7 @@ export async function verifyResourceSession(
             }
 
             resourceData = result;
-            localCache.set(resourceCacheKey, resourceData, 5);
+            localCache.set(resourceCacheKey, resourceData, 30);
         }
 
         const {
@@ -211,13 +210,15 @@ export async function verifyResourceSession(
 
         // check the rules
         if (resource.applyRules) {
-            const action = await checkRules(
+            const rulesResult = await checkRules(
                 resource.resourceId,
                 clientIp,
-                path,
-                ipCC,
-                ipAsn
+                path
             );
+
+            const action = rulesResult?.action;
+            ipCC = rulesResult?.ipCC;
+            ipAsn = rulesResult?.ipAsn;
 
             if (action == "ACCEPT") {
                 logger.debug("Resource allowed by rule");
@@ -428,7 +429,7 @@ export async function verifyResourceSession(
                     headerAuth.headerAuthHash
                 )
             ) {
-                localCache.set(clientHeaderAuthKey, clientHeaderAuth, 5);
+                localCache.set(clientHeaderAuthKey, clientHeaderAuth, 30);
                 logger.debug("Resource allowed because header auth is valid");
 
                 logRequestAudit(
@@ -529,7 +530,7 @@ export async function verifyResourceSession(
                 );
 
                 resourceSession = result?.resourceSession;
-                localCache.set(sessionCacheKey, resourceSession, 5);
+                localCache.set(sessionCacheKey, resourceSession, 30);
             }
 
             if (resourceSession?.isRequestToken) {
@@ -671,7 +672,7 @@ export async function verifyResourceSession(
                             resourceData.org
                         );
 
-                        localCache.set(userAccessCacheKey, allowedUserData, 5);
+                        localCache.set(userAccessCacheKey, allowedUserData, 30);
                     }
 
                     if (
@@ -971,26 +972,36 @@ async function isUserAllowedToAccessResource(
 async function checkRules(
     resourceId: number,
     clientIp: string | undefined,
-    path: string | undefined,
-    ipCC?: string,
-    ipAsn?: number
-): Promise<"ACCEPT" | "DROP" | "PASS" | undefined> {
+    path: string | undefined
+): Promise<
+    | {
+          action: "ACCEPT" | "DROP" | "PASS" | undefined;
+          ipCC?: string;
+          ipAsn?: number;
+      }
+    | undefined
+> {
     const ruleCacheKey = `rules:${resourceId}`;
 
     let rules: ResourceRule[] | undefined = localCache.get(ruleCacheKey);
 
     if (!rules) {
         rules = await getResourceRules(resourceId);
-        localCache.set(ruleCacheKey, rules, 5);
+        localCache.set(ruleCacheKey, rules, 30);
     }
 
     if (rules.length === 0) {
-        logger.debug("No rules found for resource", resourceId);
+        if (logger.isLevelEnabled("debug")) {
+            logger.debug("No rules found for resource", resourceId);
+        }
         return;
     }
 
     // sort rules by priority in ascending order
     rules = rules.sort((a, b) => a.priority - b.priority);
+
+    let ipCC: string | undefined;
+    let ipAsn: number | undefined;
 
     for (const rule of rules) {
         if (!rule.enabled) {
@@ -1002,23 +1013,20 @@ async function checkRules(
             rule.match == "CIDR" &&
             isIpInCidr(clientIp, rule.value)
         ) {
-            return rule.action as any;
+            return { action: rule.action as any, ipCC, ipAsn };
         } else if (
             clientIp &&
             rule.match == "IP" &&
             clientIp == rule.value
         ) {
-            return rule.action as any;
+            return { action: rule.action as any, ipCC, ipAsn };
         } else if (
             path &&
             rule.match == "PATH" &&
             isPathAllowed(rule.value, path)
         ) {
-            return rule.action as any;
-        } else if (
-            clientIp &&
-            rule.match == "COUNTRY"
-        ) {
+            return { action: rule.action as any, ipCC, ipAsn };
+        } else if (clientIp && rule.match == "COUNTRY") {
             // COUNTRY=ALL should not affect local/private/CGNAT addresses.
             if (
                 rule.value.toUpperCase() === "ALL" &&
@@ -1027,13 +1035,14 @@ async function checkRules(
                 continue;
             }
 
-            if (await isIpInGeoIP(ipCC, rule.value)) {
-                return rule.action as any;
+            if (!ipCC) {
+                ipCC = await getCountryCodeFromIp(clientIp);
             }
-        } else if (
-            clientIp &&
-            rule.match == "ASN"
-        ) {
+
+            if (await isIpInGeoIP(ipCC, rule.value)) {
+                return { action: rule.action as any, ipCC, ipAsn };
+            }
+        } else if (clientIp && rule.match == "ASN") {
             // ASN=ALL/AS0 should not affect local/private/CGNAT addresses.
             if (
                 (rule.value.toUpperCase() === "ALL" ||
@@ -1043,31 +1052,41 @@ async function checkRules(
                 continue;
             }
 
-            if (await isIpInAsn(ipAsn, rule.value)) {
-                return rule.action as any;
+            if (!ipAsn) {
+                ipAsn = await getAsnFromIp(clientIp);
             }
-        } else if (
-            clientIp &&
-            rule.match == "REGION" &&
-            (await isIpInRegion(ipCC, rule.value))
-        ) {
-            return rule.action as any;
+
+            if (await isIpInAsn(ipAsn, rule.value)) {
+                return { action: rule.action as any, ipCC, ipAsn };
+            }
+        } else if (clientIp && rule.match == "REGION") {
+            if (!ipCC) {
+                ipCC = await getCountryCodeFromIp(clientIp);
+            }
+
+            if (await isIpInRegion(ipCC, rule.value)) {
+                return { action: rule.action as any, ipCC, ipAsn };
+            }
         }
     }
 
-    return;
+    return { action: "PASS", ipCC, ipAsn };
 }
 
 export function isPathAllowed(pattern: string, path: string): boolean {
-    logger.debug(`\nMatching path "${path}" against pattern "${pattern}"`);
+    if (logger.isLevelEnabled("debug")) {
+        logger.debug(`\nMatching path "${path}" against pattern "${pattern}"`);
+    }
 
     // Normalize and split paths into segments
     const normalize = (p: string) => p.split("/").filter(Boolean);
     const patternParts = normalize(pattern);
     const pathParts = normalize(path);
 
-    logger.debug(`Normalized pattern parts: [${patternParts.join(", ")}]`);
-    logger.debug(`Normalized path parts: [${pathParts.join(", ")}]`);
+    if (logger.isLevelEnabled("debug")) {
+        logger.debug(`Normalized pattern parts: [${patternParts.join(", ")}]`);
+        logger.debug(`Normalized path parts: [${pathParts.join(", ")}]`);
+    }
 
     // Maximum recursion depth to prevent stack overflow and memory issues
     const MAX_RECURSION_DEPTH = 100;
@@ -1086,20 +1105,24 @@ export function isPathAllowed(pattern: string, path: string): boolean {
             return false;
         }
 
-        const indent = "  ".repeat(depth); // Indent based on recursion depth
+        const indent = logger.isLevelEnabled("debug") ? "  ".repeat(depth) : ""; // Indent based on recursion depth
         const currentPatternPart = patternParts[patternIndex];
         const currentPathPart = pathParts[pathIndex];
 
-        logger.debug(
-            `${indent}Checking patternIndex=${patternIndex} (${currentPatternPart || "END"}) vs pathIndex=${pathIndex} (${currentPathPart || "END"}) [depth=${depth}]`
-        );
+        if (logger.isLevelEnabled("debug")) {
+            logger.debug(
+                `${indent}Checking patternIndex=${patternIndex} (${currentPatternPart || "END"}) vs pathIndex=${pathIndex} (${currentPathPart || "END"}) [depth=${depth}]`
+            );
+        }
 
         // If we've consumed all pattern parts, we should have consumed all path parts
         if (patternIndex >= patternParts.length) {
             const result = pathIndex >= pathParts.length;
-            logger.debug(
-                `${indent}Reached end of pattern, remaining path: ${pathParts.slice(pathIndex).join("/")} -> ${result}`
-            );
+            if (logger.isLevelEnabled("debug")) {
+                logger.debug(
+                    `${indent}Reached end of pattern, remaining path: ${pathParts.slice(pathIndex).join("/")} -> ${result}`
+                );
+            }
             return result;
         }
 
@@ -1108,49 +1131,63 @@ export function isPathAllowed(pattern: string, path: string): boolean {
             // The only way this can match is if all remaining pattern parts are wildcards
             const remainingPattern = patternParts.slice(patternIndex);
             const result = remainingPattern.every((p) => p === "*");
-            logger.debug(
-                `${indent}Reached end of path, remaining pattern: ${remainingPattern.join("/")} -> ${result}`
-            );
+            if (logger.isLevelEnabled("debug")) {
+                logger.debug(
+                    `${indent}Reached end of path, remaining pattern: ${remainingPattern.join("/")} -> ${result}`
+                );
+            }
             return result;
         }
 
         // For full segment wildcards, try consuming different numbers of path segments
         if (currentPatternPart === "*") {
-            logger.debug(
-                `${indent}Found wildcard at pattern index ${patternIndex}`
-            );
-
-            // Try consuming 0 segments (skip the wildcard)
-            logger.debug(
-                `${indent}Trying to skip wildcard (consume 0 segments)`
-            );
-            if (matchSegments(patternIndex + 1, pathIndex, depth + 1)) {
+            if (logger.isLevelEnabled("debug")) {
                 logger.debug(
-                    `${indent}Successfully matched by skipping wildcard`
+                    `${indent}Found wildcard at pattern index ${patternIndex}`
                 );
+
+                // Try consuming 0 segments (skip the wildcard)
+                logger.debug(
+                    `${indent}Trying to skip wildcard (consume 0 segments)`
+                );
+            }
+            if (matchSegments(patternIndex + 1, pathIndex, depth + 1)) {
+                if (logger.isLevelEnabled("debug")) {
+                    logger.debug(
+                        `${indent}Successfully matched by skipping wildcard`
+                    );
+                }
                 return true;
             }
 
             // Try consuming current segment and recursively try rest
-            logger.debug(
-                `${indent}Trying to consume segment "${currentPathPart}" for wildcard`
-            );
-            if (matchSegments(patternIndex, pathIndex + 1, depth + 1)) {
+            if (logger.isLevelEnabled("debug")) {
                 logger.debug(
-                    `${indent}Successfully matched by consuming segment for wildcard`
+                    `${indent}Trying to consume segment "${currentPathPart}" for wildcard`
                 );
+            }
+            if (matchSegments(patternIndex, pathIndex + 1, depth + 1)) {
+                if (logger.isLevelEnabled("debug")) {
+                    logger.debug(
+                        `${indent}Successfully matched by consuming segment for wildcard`
+                    );
+                }
                 return true;
             }
 
-            logger.debug(`${indent}Failed to match wildcard`);
+            if (logger.isLevelEnabled("debug")) {
+                logger.debug(`${indent}Failed to match wildcard`);
+            }
             return false;
         }
 
         // Check for in-segment wildcard (e.g., "prefix*" or "prefix*suffix")
         if (currentPatternPart.includes("*")) {
-            logger.debug(
-                `${indent}Found in-segment wildcard in "${currentPatternPart}"`
-            );
+            if (logger.isLevelEnabled("debug")) {
+                logger.debug(
+                    `${indent}Found in-segment wildcard in "${currentPatternPart}"`
+                );
+            }
 
             // Convert the pattern segment to a regex pattern
             const regexPattern = currentPatternPart
@@ -1160,9 +1197,11 @@ export function isPathAllowed(pattern: string, path: string): boolean {
             const regex = new RegExp(`^${regexPattern}$`);
 
             if (regex.test(currentPathPart)) {
-                logger.debug(
-                    `${indent}Segment with wildcard matches: "${currentPatternPart}" matches "${currentPathPart}"`
-                );
+                if (logger.isLevelEnabled("debug")) {
+                    logger.debug(
+                        `${indent}Segment with wildcard matches: "${currentPatternPart}" matches "${currentPathPart}"`
+                    );
+                }
                 return matchSegments(
                     patternIndex + 1,
                     pathIndex + 1,
@@ -1170,29 +1209,37 @@ export function isPathAllowed(pattern: string, path: string): boolean {
                 );
             }
 
-            logger.debug(
-                `${indent}Segment with wildcard mismatch: "${currentPatternPart}" doesn't match "${currentPathPart}"`
-            );
+            if (logger.isLevelEnabled("debug")) {
+                logger.debug(
+                    `${indent}Segment with wildcard mismatch: "${currentPatternPart}" doesn't match "${currentPathPart}"`
+                );
+            }
             return false;
         }
 
         // For regular segments, they must match exactly
         if (currentPatternPart !== currentPathPart) {
-            logger.debug(
-                `${indent}Segment mismatch: "${currentPatternPart}" != "${currentPathPart}"`
-            );
+            if (logger.isLevelEnabled("debug")) {
+                logger.debug(
+                    `${indent}Segment mismatch: "${currentPatternPart}" != "${currentPathPart}"`
+                );
+            }
             return false;
         }
 
-        logger.debug(
-            `${indent}Segments match: "${currentPatternPart}" = "${currentPathPart}"`
-        );
+        if (logger.isLevelEnabled("debug")) {
+            logger.debug(
+                `${indent}Segments match: "${currentPatternPart}" = "${currentPathPart}"`
+            );
+        }
         // Move to next segments in both pattern and path
         return matchSegments(patternIndex + 1, pathIndex + 1, depth + 1);
     }
 
     const result = matchSegments(0, 0, 0);
-    logger.debug(`Final result: ${result}`);
+    if (logger.isLevelEnabled("debug")) {
+        logger.debug(`Final result: ${result}`);
+    }
     return result;
 }
 
