@@ -174,6 +174,9 @@ export const resources = pgTable(
         enabled: boolean("enabled").notNull().default(true),
         stickySession: boolean("stickySession").notNull().default(false),
         tlsServerName: varchar("tlsServerName"),
+        compress: boolean("compress").notNull().default(false),
+        compressExcludedContentTypes: text("compressExcludedContentTypes"), // JSON array of strings
+        cacheEnabled: boolean("cacheEnabled").notNull().default(false),
         setHostHeader: varchar("setHostHeader"),
         enableProxy: boolean("enableProxy").default(true),
         skipToIdpId: integer("skipToIdpId").references(() => idp.idpId, {

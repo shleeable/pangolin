@@ -3,6 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { HeadersInput } from "@app/components/HeadersInput";
+import { Textarea } from "@app/components/ui/textarea";
 import {
     SettingsContainer,
     SettingsFormCell,
@@ -79,6 +80,19 @@ export default function ReverseProxyTargetsPage() {
     );
 }
 
+const defaultExcludedContentTypes = [
+    "image/jpeg",
+    "image/png",
+    "image/webp",
+    "image/avif",
+    "video/*",
+    "audio/*",
+    "font/woff",
+    "font/woff2",
+    "application/zip",
+    "application/gzip"
+];
+
 function ProxyResourceHttpForm({
     resource,
     updateResource
@@ -121,7 +135,10 @@ function ProxyResourceHttpForm({
             ),
         headers: z
             .array(z.object({ name: z.string(), value: z.string() }))
-            .nullable()
+            .nullable(),
+        compress: z.boolean(),
+        cacheEnabled: z.boolean(),
+        compressExcludedContentTypes: z.string().optional()
     });
 
     const form = useForm({
@@ -131,7 +148,23 @@ function ProxyResourceHttpForm({
             ssl: resource.ssl,
             tlsServerName: resource.tlsServerName || "",
             setHostHeader: resource.setHostHeader || "",
-            headers: resource.headers
+            headers: resource.headers,
+            compress: resource.compress ?? false,
+            cacheEnabled: resource.cacheEnabled ?? false,
+            compressExcludedContentTypes: (() => {
+                if (!resource.compressExcludedContentTypes) {
+                    return defaultExcludedContentTypes.join("\n");
+                }
+                try {
+                    const parsed = JSON.parse(
+                        resource.compressExcludedContentTypes
+                    );
+                    if (Array.isArray(parsed)) {
+                        return parsed.join("\n");
+                    }
+                } catch {}
+                return defaultExcludedContentTypes.join("\n");
+            })()
         },
         mode: "onChange"
     });
@@ -154,6 +187,13 @@ function ProxyResourceHttpForm({
 
         const data = form.getValues();
 
+        const excludedContentTypesArray = data.compressExcludedContentTypes
+            ? data.compressExcludedContentTypes
+                  .split("\n")
+                  .map((item) => item.trim())
+                  .filter((item) => item.length > 0)
+            : defaultExcludedContentTypes;
+
         const res = await api
             .post<AxiosResponse<UpdateResourceResponse>>(
                 `/resource/${resource.resourceId}`,
@@ -162,7 +202,10 @@ function ProxyResourceHttpForm({
                     ssl: data.ssl,
                     tlsServerName: data.tlsServerName || null,
                     setHostHeader: data.setHostHeader || null,
-                    headers: data.headers || null
+                    headers: data.headers || null,
+                    compress: data.compress,
+                    cacheEnabled: data.cacheEnabled,
+                    compressExcludedContentTypes: excludedContentTypesArray
                 }
             )
             .catch((err) => {
@@ -183,7 +226,12 @@ function ProxyResourceHttpForm({
                 ssl: data.ssl,
                 tlsServerName: data.tlsServerName || null,
                 setHostHeader: data.setHostHeader || null,
-                headers: data.headers || null
+                headers: data.headers || null,
+                compress: data.compress,
+                cacheEnabled: data.cacheEnabled,
+                compressExcludedContentTypes: JSON.stringify(
+                    excludedContentTypesArray
+                )
             });
 
             toast({
@@ -259,6 +307,91 @@ function ProxyResourceHttpForm({
                                                     )}
                                                 </FormDescription>
                                                 <FormMessage />
+                                            </FormItem>
+                                        )}
+                                    />
+                                </SettingsFormCell>
+
+                                <SettingsFormCell span="full">
+                                    <FormField
+                                        control={form.control}
+                                        name="compress"
+                                        render={({ field }) => (
+                                            <FormItem>
+                                                <FormControl>
+                                                    <SwitchInput
+                                                        id="compress-toggle"
+                                                        label={t(
+                                                            "proxyCompress"
+                                                        )}
+                                                        description={t(
+                                                            "proxyCompressDescription"
+                                                        )}
+                                                        checked={field.value}
+                                                        onCheckedChange={
+                                                            field.onChange
+                                                        }
+                                                    />
+                                                </FormControl>
+                                            </FormItem>
+                                        )}
+                                    />
+                                </SettingsFormCell>
+
+                                {form.watch("compress") && (
+                                    <SettingsFormCell span="full">
+                                        <FormField
+                                            control={form.control}
+                                            name="compressExcludedContentTypes"
+                                            render={({ field }) => (
+                                                <FormItem>
+                                                    <FormLabel>
+                                                        {t(
+                                                            "proxyCompressExcludedContentTypes"
+                                                        )}
+                                                    </FormLabel>
+                                                    <FormControl>
+                                                        <Textarea
+                                                            {...field}
+                                                            rows={6}
+                                                            placeholder={defaultExcludedContentTypes.join(
+                                                                "\n"
+                                                            )}
+                                                        />
+                                                    </FormControl>
+                                                    <FormDescription>
+                                                        {t(
+                                                            "proxyCompressExcludedContentTypesDescription"
+                                                        )}
+                                                    </FormDescription>
+                                                    <FormMessage />
+                                                </FormItem>
+                                            )}
+                                        />
+                                    </SettingsFormCell>
+                                )}
+
+                                <SettingsFormCell span="full">
+                                    <FormField
+                                        control={form.control}
+                                        name="cacheEnabled"
+                                        render={({ field }) => (
+                                            <FormItem>
+                                                <FormControl>
+                                                    <SwitchInput
+                                                        id="cache-toggle"
+                                                        label={t(
+                                                            "proxyCache"
+                                                        )}
+                                                        description={t(
+                                                            "proxyCacheDescription"
+                                                        )}
+                                                        checked={field.value}
+                                                        onCheckedChange={
+                                                            field.onChange
+                                                        }
+                                                    />
+                                                </FormControl>
                                             </FormItem>
                                         )}
                                     />

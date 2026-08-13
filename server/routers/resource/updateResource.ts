@@ -91,6 +91,9 @@ const updateHttpResourceBodySchema = z
         stickySession: z.boolean().optional(),
         tlsServerName: z.string().nullable().optional(),
         setHostHeader: z.string().nullable().optional(),
+        compress: z.boolean().optional(),
+        cacheEnabled: z.boolean().optional(),
+        compressExcludedContentTypes: z.array(z.string()).nullable().optional(),
         skipToIdpId: z
             .int()
             .positive()
@@ -675,6 +678,15 @@ async function updateHttpResource(
         headers = null;
     }
 
+    let compressExcludedContentTypes = undefined;
+    if (updateData.compressExcludedContentTypes) {
+        compressExcludedContentTypes = JSON.stringify(
+            updateData.compressExcludedContentTypes
+        );
+    } else if (updateData.compressExcludedContentTypes === null) {
+        compressExcludedContentTypes = null;
+    }
+
     if (!isLicensed) {
         updateData.maintenanceModeEnabled = undefined;
         updateData.maintenanceModeType = undefined;
@@ -727,7 +739,7 @@ async function updateHttpResource(
 
         const updatedResource = await db
             .update(resources)
-            .set({ ...resourceOnlyData, headers })
+            .set({ ...resourceOnlyData, headers, compressExcludedContentTypes })
             .where(eq(resources.resourceId, resource.resourceId))
             .returning();
 
@@ -751,7 +763,7 @@ async function updateHttpResource(
 
     const updatedResource = await db
         .update(resources)
-        .set({ ...updateData, headers })
+        .set({ ...updateData, headers, compressExcludedContentTypes })
         .where(eq(resources.resourceId, resource.resourceId))
         .returning();
 

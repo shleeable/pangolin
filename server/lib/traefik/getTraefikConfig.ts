@@ -67,6 +67,10 @@ export async function getTraefikConfig(
             headers: resources.headers,
             proxyProtocol: resources.proxyProtocol,
             proxyProtocolVersion: resources.proxyProtocolVersion,
+            compress: resources.compress,
+            compressExcludedContentTypes:
+                resources.compressExcludedContentTypes,
+            cacheEnabled: resources.cacheEnabled,
             mode: resources.mode,
 
             // Target fields
@@ -184,6 +188,9 @@ export async function getTraefikConfig(
                 rewritePath: row.rewritePath,
                 rewritePathType: row.rewritePathType,
                 priority: priority,
+                compress: row.compress,
+                compressExcludedContentTypes: row.compressExcludedContentTypes,
+                cacheEnabled: row.cacheEnabled,
                 // Store domain cert resolver fields
                 domainCertResolver: row.domainCertResolver,
                 preferWildcardCert: row.preferWildcardCert
@@ -400,6 +407,62 @@ export async function getTraefikConfig(
 
                     routerMiddlewares.push(headersMiddlewareName);
                 }
+            }
+
+            // Handle compression middleware if enabled
+            if (resource.compress) {
+                const compressMiddlewareName = `${key}-compress-middleware`;
+                if (!config_output.http.middlewares) {
+                    config_output.http.middlewares = {};
+                }
+
+                let excludedContentTypes = [
+                    "image/jpeg",
+                    "image/png",
+                    "image/webp",
+                    "image/avif",
+                    "video/*",
+                    "audio/*",
+                    "font/woff",
+                    "font/woff2",
+                    "application/zip",
+                    "application/gzip"
+                ];
+
+                if (resource.compressExcludedContentTypes) {
+                    try {
+                        excludedContentTypes = JSON.parse(
+                            resource.compressExcludedContentTypes
+                        );
+                    } catch (e) {
+                        logger.error(
+                            `Failed to parse compressExcludedContentTypes for resource ${resource.resourceId}: ${e}`
+                        );
+                    }
+                }
+
+                config_output.http.middlewares[compressMiddlewareName] = {
+                    compress: {
+                        excludedContentTypes: excludedContentTypes
+                    }
+                };
+                routerMiddlewares.push(compressMiddlewareName);
+            }
+
+            // Handle caching middleware if enabled
+            if (resource.cacheEnabled) {
+                const cacheMiddlewareName = `${key}-cache-middleware`;
+                if (!config_output.http.middlewares) {
+                    config_output.http.middlewares = {};
+                }
+                config_output.http.middlewares[cacheMiddlewareName] = {
+                    plugin: {
+                        cache: {
+                            path: "/tmp"
+                        }
+                    }
+                };
+                routerMiddlewares.push(cacheMiddlewareName);
             }
 
             // Build routing rules
