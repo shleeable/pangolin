@@ -17,6 +17,7 @@ import config from "@server/lib/config";
 import type { RandomReader } from "@oslojs/crypto/random";
 import { generateRandomString } from "@oslojs/crypto/random";
 import logger from "@server/logger";
+import { localCache } from "@server/lib/cache";
 
 export const SESSION_COOKIE_NAME =
     config.getRawConfig().server.session_cookie_name;
@@ -62,6 +63,12 @@ export async function validateSessionToken(
         sha256(new TextEncoder().encode(token))
     );
 
+    const cacheKey = `userSession:${sessionId}`;
+    const cached = localCache.get<SessionValidationResult>(cacheKey);
+    if (cached !== undefined) {
+        return cached;
+    }
+
     const result = await safeRead((db) =>
         db
             .select({ user: users, session: sessions })
@@ -71,14 +78,18 @@ export async function validateSessionToken(
     );
 
     if (result.length < 1) {
-        return { session: null, user: null };
+        const val = { session: null, user: null };
+        localCache.set(cacheKey, val, 5); // Cache negative result for 5 seconds
+        return val;
     }
     const { user, session } = result[0];
     if (Date.now() >= session.expiresAt) {
         await db
             .delete(sessions)
             .where(eq(sessions.sessionId, session.sessionId));
-        return { session: null, user: null };
+        const val = { session: null, user: null };
+        localCache.set(cacheKey, val, 5);
+        return val;
     }
     if (Date.now() >= session.expiresAt - SESSION_COOKIE_EXPIRES / 2) {
         session.expiresAt = new Date(
@@ -100,11 +111,14 @@ export async function validateSessionToken(
                 .where(eq(resourceSessions.userSessionId, session.sessionId));
         });
     }
-    return { session, user };
+    const val = { session, user };
+    localCache.set(cacheKey, val, 5); // Cache valid session for 5 seconds
+    return val;
 }
 
 export async function invalidateSession(sessionId: string): Promise<void> {
     try {
+        localCache.del(`userSession:${sessionId}`);
         await db.transaction(async (trx) => {
             await trx
                 .delete(resourceSessions)
@@ -118,6 +132,15 @@ export async function invalidateSession(sessionId: string): Promise<void> {
 
 export async function invalidateAllSessions(userId: string): Promise<void> {
     try {
+        // Query the database outside the transaction to fetch active sessions and delete them from cache
+        const userSessions = await db
+            .select()
+            .from(sessions)
+            .where(eq(sessions.userId, userId));
+        for (const s of userSessions) {
+            localCache.del(`userSession:${s.sessionId}`);
+        }
+
         await db.transaction(async (trx) => {
             const userSessions = await trx
                 .select()
@@ -141,6 +164,20 @@ export async function invalidateAllSessionsExceptCurrent(
     currentSessionId: string
 ): Promise<void> {
     try {
+        // Query the database outside the transaction to fetch active sessions except current and delete them from cache
+        const userSessions = await db
+            .select()
+            .from(sessions)
+            .where(
+                and(
+                    eq(sessions.userId, userId),
+                    ne(sessions.sessionId, currentSessionId)
+                )
+            );
+        for (const s of userSessions) {
+            localCache.del(`userSession:${s.sessionId}`);
+        }
+
         await db.transaction(async (trx) => {
             const userSessions = await trx
                 .select()

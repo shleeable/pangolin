@@ -54,6 +54,7 @@ import {
     getValidCertificatesForDomains
 } from "#private/lib/certificates";
 import { build } from "@server/build";
+import { localCache } from "@server/lib/cache";
 
 const redirectHttpsMiddlewareName = "redirect-to-https";
 const redirectToRootMiddlewareName = "redirect-to-root";
@@ -81,6 +82,36 @@ type TargetWithSite = Target & {
 };
 
 export async function getTraefikConfig(
+    exitNodeId: number,
+    siteTypes: string[],
+    filterOutNamespaceDomains = false,
+    generateLoginPageRouters = false,
+    allowRawResources = true,
+    maintenancePageUiUrl: string | null = null,
+    browserGatewayUiUrl: string | null = null
+): Promise<any> {
+    const sortedSiteTypes = [...siteTypes].sort().join(",");
+    const cacheKey = `traefikConfig:${exitNodeId}:${sortedSiteTypes}:${filterOutNamespaceDomains}:${generateLoginPageRouters}:${allowRawResources}:${maintenancePageUiUrl ?? ""}:${browserGatewayUiUrl ?? ""}`;
+    const cachedConfig = localCache.get<any>(cacheKey);
+    if (cachedConfig !== undefined) {
+        return cachedConfig;
+    }
+
+    const resultConfig = await getTraefikConfigInternal(
+        exitNodeId,
+        siteTypes,
+        filterOutNamespaceDomains,
+        generateLoginPageRouters,
+        allowRawResources,
+        maintenancePageUiUrl,
+        browserGatewayUiUrl
+    );
+
+    localCache.set(cacheKey, resultConfig, 5); // Cache for 5 seconds
+    return resultConfig;
+}
+
+async function getTraefikConfigInternal(
     exitNodeId: number,
     siteTypes: string[],
     filterOutNamespaceDomains = false,
