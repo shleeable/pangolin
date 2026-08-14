@@ -12,6 +12,7 @@ import { OpenAPITags, registry } from "@server/openApi";
 import { calculateUserClientsForOrgs } from "@server/lib/calculateUserClientsForOrgs";
 import { removeUserFromOrg } from "@server/lib/userOrg";
 import { isOrgRebuildRateLimited } from "@server/lib/rebuildClientAssociations";
+import { invalidateUserOrgRolesCache } from "@server/lib/userOrgRoles";
 
 const removeUserSchema = z.strictObject({
     userId: z.string(),
@@ -105,6 +106,8 @@ export async function removeUserOrg(
         await db.transaction(async (trx) => {
             await removeUserFromOrg(org, userId, trx);
         });
+
+        invalidateUserOrgRolesCache(userId, orgId);
 
         calculateUserClientsForOrgs(userId).catch((e) => {
             logger.error(

@@ -25,6 +25,7 @@ import {
     rebuildClientAssociationsFromClient,
     isOrgRebuildRateLimited
 } from "@server/lib/rebuildClientAssociations";
+import { invalidateUserOrgRolesCache } from "@server/lib/userOrgRoles";
 
 const setUserOrgRolesParamsSchema = z.strictObject({
     orgId: z.string(),
@@ -168,6 +169,8 @@ export async function setUserOrgRoles(
                 );
             });
         }
+
+        invalidateUserOrgRolesCache(userId, orgId);
 
         return response(res, {
             data: { userId, orgId, roleIds: uniqueRoleIds },

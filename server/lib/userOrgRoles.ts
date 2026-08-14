@@ -48,3 +48,11 @@ export async function getUserOrgRoles(
     localCache.set(cacheKey, rows, 10); // Cache for 10 seconds
     return rows;
 }
+
+export function invalidateUserOrgRolesCache(
+    userId: string,
+    orgId: string
+): void {
+    localCache.del(`userOrgRoles:${userId}:${orgId}`);
+    localCache.del(`userOrgRoleIds:${userId}:${orgId}`);
+}

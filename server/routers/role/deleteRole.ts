@@ -9,6 +9,7 @@ import createHttpError from "http-errors";
 import logger from "@server/logger";
 import { fromError } from "zod-validation-error";
 import { OpenAPITags, registry } from "@server/openApi";
+import { invalidateUserOrgRolesCache } from "@server/lib/userOrgRoles";
 
 const deleteRoleSchema = z.strictObject({
     roleId: z.coerce.number().int().positive()
@@ -128,6 +129,11 @@ export async function deleteRole(
             );
         }
 
+        const affectedUsers = await db
+            .select({ userId: userOrgRoles.userId, orgId: userOrgRoles.orgId })
+            .from(userOrgRoles)
+            .where(eq(userOrgRoles.roleId, roleId));
+
         await db.transaction(async (trx) => {
             const uorNewRole = aliasedTable(userOrgRoles, "user_org_roles_new");
 
@@ -157,6 +163,10 @@ export async function deleteRole(
 
             await trx.delete(roles).where(eq(roles.roleId, roleId));
         });
+
+        for (const user of affectedUsers) {
+            invalidateUserOrgRolesCache(user.userId, user.orgId);
+        }
 
         return response(res, {
             data: null,
