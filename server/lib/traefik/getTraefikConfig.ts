@@ -15,6 +15,7 @@ import config from "@server/lib/config";
 import { resources, sites, Target, targets } from "@server/db";
 import createPathRewriteMiddleware from "./middleware";
 import { sanitize, encodePath, validatePathRewriteConfig } from "./utils";
+import { localCache } from "@server/lib/cache";
 
 const redirectHttpsMiddlewareName = "redirect-to-https";
 const badgerMiddlewareName = "badger";
@@ -39,6 +40,36 @@ type TargetWithSite = Target & {
 };
 
 export async function getTraefikConfig(
+    exitNodeId: number,
+    siteTypes: string[],
+    filterOutNamespaceDomains = false, // UNUSED BUT USED IN PRIVATE
+    generateLoginPageRouters = false, // UNUSED BUT USED IN PRIVATE
+    allowRawResources = true,
+    maintenancePageUiUrl: string | null = null, // UNUSED BUT USED IN PRIVATE
+    browserGatewayUiUrl: string | null = null // UNUSED BUT USED IN PRIVATE
+): Promise<any> {
+    const sortedSiteTypes = [...siteTypes].sort().join(",");
+    const cacheKey = `traefikConfig:${exitNodeId}:${sortedSiteTypes}:${filterOutNamespaceDomains}:${generateLoginPageRouters}:${allowRawResources}:${maintenancePageUiUrl ?? ""}:${browserGatewayUiUrl ?? ""}`;
+    const cachedConfig = localCache.get<any>(cacheKey);
+    if (cachedConfig !== undefined) {
+        return cachedConfig;
+    }
+
+    const resultConfig = await getTraefikConfigInternal(
+        exitNodeId,
+        siteTypes,
+        filterOutNamespaceDomains,
+        generateLoginPageRouters,
+        allowRawResources,
+        maintenancePageUiUrl,
+        browserGatewayUiUrl
+    );
+
+    localCache.set(cacheKey, resultConfig, 5); // Cache for 5 seconds
+    return resultConfig;
+}
+
+async function getTraefikConfigInternal(
     exitNodeId: number,
     siteTypes: string[],
     filterOutNamespaceDomains = false, // UNUSED BUT USED IN PRIVATE

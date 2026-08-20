@@ -27,6 +27,7 @@ import {
     rebuildClientAssociationsFromClient,
     isOrgRebuildRateLimited
 } from "@server/lib/rebuildClientAssociations";
+import { invalidateUserOrgRolesCache } from "@server/lib/userOrgRoles";
 
 const addUserRoleParamsSchema = z.strictObject({
     userId: z.string(),
@@ -181,6 +182,8 @@ export async function addUserRole(
                 );
             });
         }
+
+        invalidateUserOrgRolesCache(userId, role.orgId);
 
         return response(res, {
             data: newUserRole ?? { userId, orgId: role.orgId, roleId },

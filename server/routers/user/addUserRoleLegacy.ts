@@ -14,6 +14,7 @@ import {
     rebuildClientAssociationsFromClient,
     isOrgRebuildRateLimited
 } from "@server/lib/rebuildClientAssociations";
+import { invalidateUserOrgRolesCache } from "@server/lib/userOrgRoles";
 
 /** Legacy path param order: /role/:roleId/add/:userId */
 const addUserRoleLegacyParamsSchema = z.strictObject({
@@ -177,6 +178,8 @@ export async function addUserRoleLegacy(
                 );
             });
         }
+
+        invalidateUserOrgRolesCache(userId, role.orgId);
 
         return response(res, {
             data: { ...existingUser, roleId },
